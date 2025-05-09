@@ -22,6 +22,8 @@
 #endif
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <Wire.h>
+#include <LCD_I2C.h>
 
 // ID de Dispositivo : se proporcionan varias alternativas, a modo de ejemplo
 String deviceID = String("giirobpr2-device-") + String(DEVICE_GIIROB_PR2_ID); 
@@ -30,6 +32,13 @@ String deviceID = String("giirobpr2-device-") + String(DEVICE_GIIROB_PR2_ID);
   // Versión usando la dirección MAC del dispositivo
 //String deviceID = String("device-esp32s3-") + String(DEVICE_ESP_ID);        
 // Versión usando el ID de ESP del dispositivo
+
+
+
+//----IMPORTANTE!!!!!!
+//La direción de la pantalla (p.e 0x3F) puede variar y si no es la que está puesta hay que usar un script para leerla
+LCD_I2C lcd(0x3F, 16, 2); 
+
 
 void setup() {
   // Este setup configura conceptos 'core', inicializa la wifi y la conexión con 
