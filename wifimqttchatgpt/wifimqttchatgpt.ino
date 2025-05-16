@@ -89,6 +89,7 @@ void conectarMQTT() {
 LCD_I2C lcd(0x3F, 16, 2);  // Dirección I2C común 0x27, pantalla de 16x2
 
 // ---- QR ----
+/* version texto plano
 void dumpData_bis(const struct quirc_data *data) {
   String qrTexto = (const char*)data->payload;
   Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
@@ -101,7 +102,45 @@ void dumpData_bis(const struct quirc_data *data) {
 
   client.publish(topic_qr, qrTexto.c_str());
 }
+*/
+void dumpData_bis(const struct quirc_data *data) {
+  String qrTexto = (const char*)data->payload;
+  Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
 
+  StaticJsonDocument<128> doc;
+  DeserializationError error = deserializeJson(doc, qrTexto);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+
+  if (error) {
+    Serial.println("❌ Error al parsear JSON");
+    lcd.print("Acceso denegado");
+    return;
+  }
+
+  const char* nombre = doc["nombre"];
+  int id = doc["id"];
+
+  if (nombre == nullptr || id == 0) {
+    Serial.println("❌ JSON inválido");
+    lcd.print("Acceso denegado");
+    return;
+  }
+
+  if (id >= 1 && id <= 4) {
+    Serial.printf("✅ Acceso permitido: %s (ID %d)\n", nombre, id);
+    lcd.print("Bienvenido:");
+    lcd.setCursor(0, 1);
+    lcd.print(nombre);
+  } else {
+    Serial.printf("❌ ID no autorizado: %d\n", id);
+    lcd.print("Acceso denegado");
+  }
+
+  // Publicar el JSON original por MQTT
+  client.publish(topic_qr, qrTexto.c_str());
+}
 
 
 
