@@ -16,8 +16,9 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // ---- TOPICS MQTT ----
-const char* topic_botones = "PR2/A9/RoboDK";
-const char* topic_qr = "PR2/A9/QR";
+const char* topic_botones = "PR2/A9/RoboDK/Acciones";
+const char* topic_qr = "PR2/A9/RoboDK/QR";
+const char* topic_th = "PR2/A9/NT";
 
 // ---- PINES BOTONES ----
 #define BOTON1 19
@@ -41,6 +42,9 @@ const char* topic_qr = "PR2/A9/QR";
 #define VSYNC_GPIO_NUM    6
 #define HREF_GPIO_NUM     7
 #define PCLK_GPIO_NUM     13
+
+
+String persona = "El Kaiac";
 
 TaskHandle_t QRCodeReader_Task;
 struct quirc *q = NULL;
@@ -127,6 +131,8 @@ void dumpData_bis(const struct quirc_data *data) {
     lcd.print("Acceso denegado");
     return;
   }
+
+  persona = nombre;
 
   if (id >= 1 && id <= 4) {
     Serial.printf("✅ Acceso permitido: %s (ID %d)\n", nombre, id);
@@ -225,20 +231,21 @@ void setup() {
   lcd.print("Esperando QR...");
 }
 
+
 void loop() {
   client.loop();
 
-  const char* persona = "El Kaiac";
+  
   if (digitalRead(BOTON1) == LOW) {
-    enviarJSON(topic_botones, "marcha", persona);
+    enviarJSON(topic_botones, "marcha", persona.c_str());
     delay(500);
   }
   if (digitalRead(BOTON2) == LOW) {
-    enviarJSON(topic_botones, "paro", persona);
+    enviarJSON(topic_botones, "paro", persona.c_str());
     delay(500);
   }
   if (digitalRead(BOTON3) == LOW) {
-    enviarJSON(topic_botones, "reset", persona);
+    enviarJSON(topic_botones, "reset", persona.c_str());
     delay(500);
   }
 }
