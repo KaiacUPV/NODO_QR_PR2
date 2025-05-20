@@ -7,8 +7,8 @@
 #include <LCD_I2C.h>
 
 // ---- CONFIGURACIÓN WIFI Y MQTT ----
-const char* ssid = "Kaiac";
-const char* password = "62mari2lasucla";
+const char* ssid = "Phone_1_2911";
+const char* password = "11111111";
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
 
@@ -97,23 +97,11 @@ void conectarMQTT() {
 
 
 // ---- LCD ----
+SemaphoreHandle_t xMutexLCD; 
 LCD_I2C lcd(0x3F, 16, 2);  // Dirección I2C común 0x27, pantalla de 16x2
 
 // ---- QR ----
-/* version texto plano
-void dumpData_bis(const struct quirc_data *data) {
-  String qrTexto = (const char*)data->payload;
-  Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("QR Leido:");
-  lcd.setCursor(0, 1);
-  lcd.print(qrTexto.substring(0, 16)); // Solo los primeros 16 caracteres
-
-  client.publish(topic_qr, qrTexto.c_str());
-}
-*/
 void dumpData_bis(const struct quirc_data *data) {
   String qrTexto = (const char*)data->payload;
   Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
@@ -146,8 +134,6 @@ void dumpData_bis(const struct quirc_data *data) {
     lcd.print("Bienvenido:");
     lcd.setCursor(0, 1);
     lcd.print(nombre);
-    delay(2000);
-    lcd.clear();
   } else {
     Serial.printf("❌ ID no autorizado: %d\n", id);
     lcd.print("Acceso denegado");
@@ -155,6 +141,8 @@ void dumpData_bis(const struct quirc_data *data) {
 
   // Publicar el JSON original por MQTT
   client.publish(topic_qr, qrTexto.c_str());
+  delay(2000);
+  lcd.clear();
 
 }
 
@@ -191,9 +179,6 @@ void QRCodeReader(void * pvParameters) {
 
 
 //---- ISR BTOTONES -----
-
-
-
 struct Button {
   const uint8_t PIN;
   bool pressed;
@@ -214,6 +199,9 @@ void IRAM_ATTR ISR_Boton2() {
 void IRAM_ATTR ISR_Boton3() {
   button3.pressed = true;
 }
+
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -268,6 +256,7 @@ void setup() {
 
 
   ///lcd
+  xMutexLCD = xSemaphoreCreateMutex();  //semaoforo la lacd 
   Wire.begin(45, 48);
   lcd.begin();
   lcd.backlight();
@@ -280,14 +269,17 @@ void setup() {
 void loop() {
   client.loop();
 
-  lcd.setCursor(0, 0);
-  lcd.print("Tem: ");
-  lcd.print(temp);
-  lcd.print(" C");
-  lcd.setCursor(0, 1);
-  lcd.print("Hum: ");
-  lcd.print(hum);
-  lcd.print(" %");
+  if (xSemaphoreTake(xMutexLCD, portMAX_DELAY)) {
+    lcd.setCursor(0, 0);
+    lcd.print("Tem: ");
+    lcd.print(temp);
+    lcd.print(" C");
+    lcd.setCursor(0, 1);
+    lcd.print("Hum: ");
+    lcd.print(hum);
+    lcd.print(" %");
+    xSemaphoreGive(xMutexLCD);
+  }
 
 
   if (button1.pressed) {
