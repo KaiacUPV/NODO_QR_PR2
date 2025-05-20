@@ -7,9 +7,9 @@
 #include <LCD_I2C.h>
 
 // ---- CONFIGURACIÓN WIFI Y MQTT ----
-const char* ssid = "Phone_1_2911";
-const char* password = "11111111";
-const char* mqtt_server = "192.168.228.90";
+const char* ssid = "Kaiac";
+const char* password = "62mari2lasucla";
+const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
@@ -93,6 +93,9 @@ void conectarMQTT() {
 }
 
 
+
+
+
 // ---- LCD ----
 LCD_I2C lcd(0x3F, 16, 2);  // Dirección I2C común 0x27, pantalla de 16x2
 
@@ -143,6 +146,8 @@ void dumpData_bis(const struct quirc_data *data) {
     lcd.print("Bienvenido:");
     lcd.setCursor(0, 1);
     lcd.print(nombre);
+    delay(2000);
+    lcd.clear();
   } else {
     Serial.printf("❌ ID no autorizado: %d\n", id);
     lcd.print("Acceso denegado");
@@ -150,8 +155,7 @@ void dumpData_bis(const struct quirc_data *data) {
 
   // Publicar el JSON original por MQTT
   client.publish(topic_qr, qrTexto.c_str());
-  delay(2000);
-  lcd.clear();
+
 }
 
 
@@ -183,11 +187,46 @@ void QRCodeReader(void * pvParameters) {
   }
 }
 
+
+
+
+//---- ISR BTOTONES -----
+
+
+
+struct Button {
+  const uint8_t PIN;
+  bool pressed;
+};
+
+Button button1 = {BOTON1, false};
+Button button2 = {BOTON2, false};
+Button button3 = {BOTON3, false};
+
+void IRAM_ATTR ISR_Boton1() {
+  button1.pressed = true;
+}
+
+void IRAM_ATTR ISR_Boton2() {
+  button2.pressed = true;
+}
+
+void IRAM_ATTR ISR_Boton3() {
+  button3.pressed = true;
+}
+
 void setup() {
   Serial.begin(115200);
+
+
+  //Botones
   pinMode(BOTON1, INPUT_PULLUP);
   pinMode(BOTON2, INPUT_PULLUP);
   pinMode(BOTON3, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BOTON1), ISR_Boton1, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BOTON2), ISR_Boton2, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BOTON3), ISR_Boton3, FALLING);
+
 
   // Config cámara
   camera_config_t config;
@@ -242,37 +281,41 @@ void loop() {
   client.loop();
 
   lcd.setCursor(0, 0);
-  lcd.print("Temp: ");
+  lcd.print("Tem: ");
   lcd.print(temp);
-  lcd.print("C");
+  lcd.print(" C");
   lcd.setCursor(0, 1);
   lcd.print("Hum: ");
   lcd.print(hum);
-  lcd.print("%");
+  lcd.print(" %");
 
 
-  if (digitalRead(BOTON1) == LOW) {
+  if (button1.pressed) {
     enviarJSON(topic_botones, "marcha", persona.c_str());
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("MARCHA");
     delay(1000);
     lcd.clear();
+    button1.pressed = false;
   }
-  if (digitalRead(BOTON2) == LOW) {
+
+  if (button2.pressed) {
     enviarJSON(topic_botones, "paro", persona.c_str());
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("PARO");
     delay(1000);
     lcd.clear();
+    button2.pressed = false;
   }
-  if (digitalRead(BOTON3) == LOW) {
+  if (button3.pressed) {
     enviarJSON(topic_botones, "reset", persona.c_str());
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("RESET");
     delay(1000);
     lcd.clear();
+    button3.pressed = false;
   }
 }
