@@ -102,6 +102,8 @@ LCD_I2C lcd(0x3F, 16, 2);  // Dirección I2C común 0x27, pantalla de 16x2
 
 // ---- QR ----
 
+
+/*
 void dumpData_bis(const struct quirc_data *data) {
   String qrTexto = (const char*)data->payload;
   Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
@@ -145,6 +147,61 @@ void dumpData_bis(const struct quirc_data *data) {
   lcd.clear();
 
 }
+*/
+
+void dumpData_bis(const struct quirc_data *data) {
+  String qrTexto = (const char*)data->payload;
+  Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
+
+  StaticJsonDocument<128> doc;
+  DeserializationError error = deserializeJson(doc, qrTexto);
+
+  if (xSemaphoreTake(xMutexLCD, portMAX_DELAY)) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+
+    if (error) {
+      Serial.println("❌ Error al parsear JSON");
+      lcd.print("Acceso denegado");
+      xSemaphoreGive(xMutexLCD);
+      return;
+    }
+
+    const char* nombre = doc["nombre"];
+    int id = doc["id"];
+
+    if (nombre == nullptr || id == 0) {
+      Serial.println("❌ JSON inválido");
+      lcd.print("Acceso denegado");
+      xSemaphoreGive(xMutexLCD);
+      return;
+    }
+
+    persona = nombre;
+
+    if (id >= 1 && id <= 4) {
+      Serial.printf("✅ Acceso permitido: %s (ID %d)\n", nombre, id);
+      lcd.print("Bienvenido:");
+      lcd.setCursor(0, 1);
+      lcd.print(nombre);
+    } else {
+      Serial.printf("❌ ID no autorizado: %d\n", id);
+      lcd.print("Acceso denegado");
+    }
+
+    xSemaphoreGive(xMutexLCD);
+  }
+
+  // Publicar el JSON original por MQTT
+  client.publish(topic_qr, qrTexto.c_str());
+  delay(2000);
+
+  if (xSemaphoreTake(xMutexLCD, portMAX_DELAY)) {
+    lcd.clear();
+    xSemaphoreGive(xMutexLCD);
+  }
+}
+
 
 
 
