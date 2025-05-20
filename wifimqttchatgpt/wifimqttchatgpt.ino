@@ -50,7 +50,7 @@ volatile int temp = 25;
 volatile int hum = 67;
 bool qr_leido = false;
 int id = 1;
-
+LCD_I2C lcd(0x3F, 16, 2);  
 
 
 TaskHandle_t QRCodeReader_Task;
@@ -60,7 +60,7 @@ camera_fb_t * fb = NULL;
 struct quirc_code code;
 struct quirc_data data;
 
-// ---- FUNCIÓN DE ENVÍO JSON POR MQTT ----
+// ---- FUNCIONES JSON POR MQTT ----
 void enviarJSON(const char* topic, const char* accion, const char* persona) {
   StaticJsonDocument<128> doc;
   doc["accion"] = accion;
@@ -71,6 +71,39 @@ void enviarJSON(const char* topic, const char* accion, const char* persona) {
   Serial.printf("📤 JSON publicado a [%s]: %s\n", topic, buffer);
 }
 
+
+
+void callback_topic(char* topic, byte* payload, unsigned int length) {
+  String mensaje;
+  for (unsigned int i = 0; i < length; i++) {
+    mensaje += (char)payload[i];
+  }
+  Serial.print("Mensaje recibido en topic: ");
+  Serial.println(topic);
+  Serial.print("Contenido: ");
+  Serial.println(mensaje);
+
+  // Procesar el topic de temperatura y humedad
+  if (String(topic) == topic_th) {
+    lcd.clear();
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, mensaje);
+    if (!error) {
+      if (doc.containsKey("temperatura") && doc.containsKey("humedad")) {
+        temp = doc["temperatura"];
+        hum = doc["humedad"];
+        Serial.printf("Temperatura y humedad actualizadas: %d C, %d %%\n", temp, hum);
+      } else {
+        Serial.println("JSON recibido no tiene las claves 'temperatura' o 'humedad'");
+      }
+    } else {
+      Serial.print("Error al parsear JSON en topic_th: ");
+      Serial.println(error.c_str());
+    }
+  }
+
+  // Aquí podrías añadir más manejo para otros topics si quieres
+}
 // ---- WIFI Y MQTT ----
 void conectarWiFi() {
   Serial.print("Conectando a WiFi...");
@@ -88,6 +121,7 @@ void conectarMQTT() {
     String clientId = "ESP32Client-" + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str())) {
       Serial.println("✅ Conectado");
+      client.subscribe(topic_th);  
     } else {
       Serial.print("❌ Fallo. Estado: "); Serial.println(client.state());
       delay(2000);
@@ -99,24 +133,6 @@ void conectarMQTT() {
 
 
 
-// ---- LCD ----
-LCD_I2C lcd(0x3F, 16, 2);  // Dirección I2C común 0x27, pantalla de 16x2
-
-// ---- QR ----
-/* version texto plano
-void dumpData_bis(const struct quirc_data *data) {
-  String qrTexto = (const char*)data->payload;
-  Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("QR Leido:");
-  lcd.setCursor(0, 1);
-  lcd.print(qrTexto.substring(0, 16)); // Solo los primeros 16 caracteres
-
-  client.publish(topic_qr, qrTexto.c_str());
-}
-*/
 void dumpData_bis(const struct quirc_data *data) {
   String qrTexto = (const char*)data->payload;
   Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
@@ -261,6 +277,7 @@ void setup() {
 
   conectarWiFi();
   client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback_topic); 
   conectarMQTT();
 
   xTaskCreatePinnedToCore(QRCodeReader, "QRReader", 10000, NULL, 1, &QRCodeReader_Task, 0);
@@ -279,7 +296,6 @@ void setup() {
 
 void loop() {
   client.loop();
-
   lcd.setCursor(0, 0);
   lcd.print("Tem: ");
   lcd.print(temp);
@@ -334,6 +350,5 @@ void loop() {
     qr_leido = false;
     lcd.clear();
   }
-
 
 }
