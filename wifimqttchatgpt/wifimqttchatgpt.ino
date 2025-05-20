@@ -7,9 +7,9 @@
 #include <LCD_I2C.h>
 
 // ---- CONFIGURACIÓN WIFI Y MQTT ----
-const char* ssid = "Kaiac";
-const char* password = "62mari2lasucla";
-const char* mqtt_server = "broker.hivemq.com";
+const char* ssid = "Phone_1_2911";
+const char* password = "11111111";
+const char* mqtt_server = "192.168.228.90";
 const int mqtt_port = 1883;
 
 WiFiClient espClient;
@@ -28,7 +28,7 @@ const char* topic_th = "PR2/A9/NT";
 // ---- CÁMARA y QR ----
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM      15
+#define XCLK_GPIO_NUM     15
 #define SIOD_GPIO_NUM     4
 #define SIOC_GPIO_NUM     5
 #define Y9_GPIO_NUM       16
@@ -44,7 +44,11 @@ const char* topic_th = "PR2/A9/NT";
 #define PCLK_GPIO_NUM     13
 
 
-String persona = "El Kaiac";
+//variables globales
+String persona = "Desconocido";
+int temp = 25;
+int hum = 67;
+
 
 TaskHandle_t QRCodeReader_Task;
 struct quirc *q = NULL;
@@ -146,6 +150,8 @@ void dumpData_bis(const struct quirc_data *data) {
 
   // Publicar el JSON original por MQTT
   client.publish(topic_qr, qrTexto.c_str());
+  delay(2000);
+  lcd.clear();
 }
 
 
@@ -228,24 +234,45 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Esperando QR...");
+  //lcd.print("Esperando QR...");
 }
 
 
 void loop() {
   client.loop();
 
-  
+  lcd.setCursor(0, 0);
+  lcd.print("Temp: ");
+  lcd.print(temp);
+  lcd.print("C");
+  lcd.setCursor(0, 1);
+  lcd.print("Hum: ");
+  lcd.print(hum);
+  lcd.print("%");
+
+
   if (digitalRead(BOTON1) == LOW) {
     enviarJSON(topic_botones, "marcha", persona.c_str());
-    delay(500);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("MARCHA");
+    delay(1000);
+    lcd.clear();
   }
   if (digitalRead(BOTON2) == LOW) {
     enviarJSON(topic_botones, "paro", persona.c_str());
-    delay(500);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("PARO");
+    delay(1000);
+    lcd.clear();
   }
   if (digitalRead(BOTON3) == LOW) {
     enviarJSON(topic_botones, "reset", persona.c_str());
-    delay(500);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("RESET");
+    delay(1000);
+    lcd.clear();
   }
 }
