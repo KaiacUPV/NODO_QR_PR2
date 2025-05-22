@@ -7,8 +7,8 @@
 #include <LCD_I2C.h>
 
 // ---- CONFIGURACIÓN WIFI Y MQTT ----
-const char* ssid = "Kaiac";
-const char* password = "62mari2lasucla";
+const char* ssid = "Phone_1_2911";
+const char* password = "11111111";
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
 
@@ -43,7 +43,6 @@ const char* topic_th = "PR2/A9/NT";
 #define HREF_GPIO_NUM     7
 #define PCLK_GPIO_NUM     13
 
-
 //variables globales
 String persona = "Desconocido";
 volatile int temp = 25;
@@ -52,8 +51,6 @@ bool qr_leido = false;
 int id = 1;
 LCD_I2C lcd(0x3F, 16, 2);  
 
-
-TaskHandle_t QRCodeReader_Task;
 struct quirc *q = NULL;
 uint8_t *image = NULL;  
 camera_fb_t * fb = NULL;
@@ -70,8 +67,6 @@ void enviarJSON(const char* topic, const char* accion, const char* persona) {
   client.publish(topic, buffer);
   Serial.printf("📤 JSON publicado a [%s]: %s\n", topic, buffer);
 }
-
-
 
 void callback_topic(char* topic, byte* payload, unsigned int length) {
   String mensaje;
@@ -101,9 +96,8 @@ void callback_topic(char* topic, byte* payload, unsigned int length) {
       Serial.println(error.c_str());
     }
   }
-
-  // Aquí podrías añadir más manejo para otros topics si quieres
 }
+
 // ---- WIFI Y MQTT ----
 void conectarWiFi() {
   Serial.print("Conectando a WiFi...");
@@ -129,10 +123,6 @@ void conectarMQTT() {
   }
 }
 
-
-
-
-
 void dumpData_bis(const struct quirc_data *data) {
   String qrTexto = (const char*)data->payload;
   Serial.print("📷 QR Leído: "); Serial.println(qrTexto);
@@ -149,33 +139,27 @@ void dumpData_bis(const struct quirc_data *data) {
 
   const char* nombre = doc["nombre"];
   id = doc["id"];
-
-
   persona = nombre;
-
-
-  /*
-  if (id >= 1 && id <= 4) {
-    //Serial.printf("✅ Acceso permitido: %s (ID %d)\n", nombre, id);
-    lcd.print("Bienvenido:");
-    lcd.setCursor(0, 1);
-    lcd.print(nombre);
-    delay(2000);
-    lcd.clear();
-  } else {
-    Serial.printf("❌ ID no autorizado: %d\n", id);
-    lcd.print("Acceso denegado");
-  }
-  */
-
-  // Publicar el JSON original por MQTT
   client.publish(topic_qr, qrTexto.c_str());
 
 }
 
+struct Button {
+  const uint8_t PIN;
+  bool pressed;
+};
 
+Button button1 = {BOTON1, false};
+Button button2 = {BOTON2, false};
+Button button3 = {BOTON3, false};
 
-void QRCodeReader(void * pvParameters) {
+void IRAM_ATTR ISR_Boton1() { button1.pressed = true; }
+void IRAM_ATTR ISR_Boton2() { button2.pressed = true; }
+void IRAM_ATTR ISR_Boton3() { button3.pressed = true; }
+
+void QRCodeReader(void * args) {
+  QueueHandle_t cola = (QueueHandle_t)args;
+
   while (true) {
     q = quirc_new();
     if (!q) continue;
@@ -193,7 +177,13 @@ void QRCodeReader(void * pvParameters) {
       quirc_extract(q, 0, &code);
       if (quirc_decode(&code, &data) == 0) {
         dumpData_bis(&data);
-        qr_leido = true;
+        char mensaje_lcd[32];
+        if (id >= 1 && id <= 4) {
+          snprintf(mensaje_lcd, sizeof(mensaje_lcd), "Bienvenido:|%s", persona.c_str());
+        } else {
+          snprintf(mensaje_lcd, sizeof(mensaje_lcd), "Acceso denegado|");
+        }
+        xQueueSendToBack(cola, &mensaje_lcd, pdMS_TO_TICKS(3000));
       }
     }
 
@@ -203,37 +193,82 @@ void QRCodeReader(void * pvParameters) {
   }
 }
 
+/* ================Tareas que gestionan nuevas entradas de informacíon================*/
+void controlador(void *args){
+  QueueHandle_t cola = (QueueHandle_t)args;
 
+  for (;;){
+    if (button1.pressed) {
+      enviarJSON(topic_botones, "marcha", persona.c_str());
+      char mensaje[32] = "MARCHA";
+      xQueueSendToBack(cola, &mensaje, pdMS_TO_TICKS(3000));
+      button1.pressed = false;
+    }
 
-
-//---- ISR BTOTONES -----
-
-
-
-struct Button {
-  const uint8_t PIN;
-  bool pressed;
-};
-
-Button button1 = {BOTON1, false};
-Button button2 = {BOTON2, false};
-Button button3 = {BOTON3, false};
-
-void IRAM_ATTR ISR_Boton1() {
-  button1.pressed = true;
+    if (button2.pressed) {
+      enviarJSON(topic_botones, "paro", persona.c_str());
+      char mensaje[32] = "PARO";
+      xQueueSendToBack(cola, &mensaje, pdMS_TO_TICKS(3000));
+      button2.pressed = false;
+    }
+    if (button3.pressed) {
+      enviarJSON(topic_botones, "reset", persona.c_str());
+      char mensaje[32] = "RESET";
+      xQueueSendToBack(cola, &mensaje, pdMS_TO_TICKS(3000));
+      button3.pressed = false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));  // evita saturar la CPU
+  }
 }
 
-void IRAM_ATTR ISR_Boton2() {
-  button2.pressed = true;
+void display(void *args) {
+  QueueHandle_t cola = (QueueHandle_t)args;
+  char mensaje[32];
+
+  ///lcd
+  Wire.begin(45, 48);
+  lcd.begin();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+
+  for (;;) {
+    if (xQueueReceive(cola, &mensaje, pdMS_TO_TICKS(1000))) {
+      lcd.clear();
+
+      // Buscar el separador '|'
+      char *separador = strchr(mensaje, '|');
+      if (separador != NULL) {
+        *separador = '\0';  // Termina la primera línea
+        lcd.setCursor(0, 0);
+        lcd.print(mensaje);
+        lcd.setCursor(0, 1);
+        lcd.print(separador + 1);  // Lo que está después del '|'
+        vTaskDelay(pdMS_TO_TICKS(4000));
+      } else {
+        lcd.setCursor(0, 0);
+        lcd.print(mensaje);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+      }
+      
+      lcd.clear();
+    } else {
+      lcd.setCursor(0, 0);
+      lcd.print("Tem: ");
+      lcd.print(temp);
+      lcd.print(" C");
+      lcd.setCursor(0, 1);
+      lcd.print("Hum: ");
+      lcd.print(hum);
+      lcd.print(" %");
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+  }
 }
 
-void IRAM_ATTR ISR_Boton3() {
-  button3.pressed = true;
-}
 
 void setup() {
   Serial.begin(115200);
-
 
   //Botones
   pinMode(BOTON1, INPUT_PULLUP);
@@ -242,7 +277,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(BOTON1), ISR_Boton1, FALLING);
   attachInterrupt(digitalPinToInterrupt(BOTON2), ISR_Boton2, FALLING);
   attachInterrupt(digitalPinToInterrupt(BOTON3), ISR_Boton3, FALLING);
-
 
   // Config cámara
   camera_config_t config;
@@ -280,75 +314,22 @@ void setup() {
   client.setCallback(callback_topic); 
   conectarMQTT();
 
-  xTaskCreatePinnedToCore(QRCodeReader, "QRReader", 10000, NULL, 1, &QRCodeReader_Task, 0);
+  QueueHandle_t cola = xQueueCreate(10, sizeof(char[32]));
+  xTaskCreatePinnedToCore(QRCodeReader, "QRReader", 10000,  (void*)cola, 5, NULL, 0);
+  // corre en el core 0 para que esté apartada de las demás tareas 
+  // y que no se interrumpa el leer códigos QR
+  xTaskCreatePinnedToCore(&controlador, "controlador", 8192, (void*)cola, 2, NULL, 1); 
+  //tiene una prioridad más baja porque corre en el fondo
+  // es la tarea que se encarga de analizar si ha habido una interruoción
+  // y entonces hacer lo que le toca
+  xTaskCreatePinnedToCore(&display, "lcd", 8192, (void*)cola, 5, NULL, 1);
+  // está cada 3 segundos mirando si hay algo en el la cola y en caso afirmativo,
+  // lo imprime en la pantalla, en otro caso imprime la temperatura y humedad
 
 
-
-  ///lcd
-  Wire.begin(45, 48);
-  lcd.begin();
-  lcd.backlight();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  //lcd.print("Esperando QR...");
 }
 
 
 void loop() {
   client.loop();
-  lcd.setCursor(0, 0);
-  lcd.print("Tem: ");
-  lcd.print(temp);
-  lcd.print(" C");
-  lcd.setCursor(0, 1);
-  lcd.print("Hum: ");
-  lcd.print(hum);
-  lcd.print(" %");
-
-
-  if (button1.pressed) {
-    enviarJSON(topic_botones, "marcha", persona.c_str());
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("MARCHA");
-    delay(1000);
-    lcd.clear();
-    button1.pressed = false;
-  }
-
-  if (button2.pressed) {
-    enviarJSON(topic_botones, "paro", persona.c_str());
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("PARO");
-    delay(1000);
-    lcd.clear();
-    button2.pressed = false;
-  }
-  if (button3.pressed) {
-    enviarJSON(topic_botones, "reset", persona.c_str());
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("RESET");
-    delay(1000);
-    lcd.clear();
-    button3.pressed = false;
-  }
-
-  if(qr_leido){
-    lcd.clear();
-    if (id >= 1 && id <= 4) {
-      lcd.setCursor(0, 0);
-      lcd.print("Bienvenido:");
-      lcd.setCursor(0, 1);
-      lcd.print(persona);
-      
-    } else {
-      lcd.print("Acceso denegado");
-    }
-    delay(4000);
-    qr_leido = false;
-    lcd.clear();
-  }
-
 }
